@@ -2,12 +2,14 @@ import type * as pc from "playcanvas";
 import { palette, type Builder, type WorldRefs } from "../world/build";
 import type { AmbientSystem } from "./ambient";
 import type { AvatarController } from "./avatarController";
+import type { Cat } from "./cat";
 import { nearest, save } from "./logic";
 import type { Interactive, InteractiveType, PanelType, Point } from "./types";
 /** What an interaction may do to the rest of the game. */
 export interface InteractionContext {
   avatar: AvatarController;
   ambient: AmbientSystem;
+  cat: Cat;
   builder: Builder;
   world: WorldRefs;
   say: (message: string) => void;
@@ -47,6 +49,7 @@ const handlers: Record<InteractiveType, Handler> = {
     say("Menta recibió agua. ¡Gracias por cuidarla!");
   },
   radio: (_o, { toggleSound }) => toggleSound(),
+  cat: (_o, { cat, avatar, say }) => say(cat.call(avatar.position)),
 };
 /** Proximity, highlight and dispatch of interactive objects. */
 export class InteractionSystem {

@@ -69,16 +69,39 @@ export class Avatar {
       c.cream,
       this.hips,
     );
+    // A limb segment hangs from its pivot as a tapered tube that ends exactly
+    // on the next joint; each joint is a sphere matching the tube radius, so
+    // the silhouette stays sealed at any bend and nothing overshoots a joint.
+    const segment = (
+      name: string,
+      parent: pc.Entity,
+      length: number,
+      top: number,
+      bottom: number,
+      color: string,
+    ) =>
+      b.frustum(
+        name,
+        [0, -length / 2, 0],
+        [bottom * 2, length, bottom * 2],
+        top / bottom,
+        color,
+        parent,
+      );
+    const joint = (name: string, parent: pc.Entity, r: number, color: string) =>
+      s(name, "sphere", [0, 0, 0], [r * 2, r * 2, r * 2], color, parent);
     // Legs: hip → knee → ankle, each a pivot so the knee can bend.
     for (const side of [-1, 1]) {
       const hip = g("Hip joint", side * 0.12, 0, 0, this.hips);
-      s("Thigh", "capsule", [0, -0.13, 0], [0.2, 0.33, 0.21], c.cream, hip);
+      joint("Hip ball", hip, 0.1, c.cream);
+      segment("Thigh", hip, 0.27, 0.1, 0.092, c.cream);
       const knee = g("Knee", 0, -0.27, 0, hip);
-      s("Knee pad", "sphere", [0, 0, 0.005], [0.19, 0.17, 0.2], c.cream, knee);
-      s("Shin", "capsule", [0, -0.12, 0], [0.18, 0.3, 0.19], c.cream, knee);
-      s("Turn-up", "round", [0, -0.215, 0], [0.2, 0.06, 0.21], "#e6dcc6", knee);
+      joint("Knee ball", knee, 0.092, c.cream);
+      // The shin stops inside the turn-up, which closes the trouser leg.
+      segment("Shin", knee, 0.215, 0.092, 0.086, c.cream);
+      s("Turn-up", "round", [0, -0.215, 0], [0.2, 0.06, 0.2], "#e6dcc6", knee);
       const ankle = g("Ankle", 0, -0.26, 0, knee);
-      s("Sock", "cylinder", [0, 0.0, 0], [0.13, 0.05, 0.13], c.pink, ankle);
+      s("Sock", "cylinder", [0, 0.015, 0], [0.13, 0.07, 0.13], c.pink, ankle);
       s(
         "Sneaker",
         "round",
@@ -175,33 +198,15 @@ export class Avatar {
     );
     // Arms: shoulder → elbow → wrist.
     for (const side of [-1, 1]) {
-      const shoulder = g("Shoulder", side * 0.33, 0.45, 0, this.body);
-      s(
-        "Shoulder cap",
-        "sphere",
-        [0, 0, 0],
-        [0.21, 0.21, 0.22],
-        c.sage,
-        shoulder,
-      );
-      s(
-        "Upper sleeve",
-        "capsule",
-        [0, -0.12, 0],
-        [0.17, 0.3, 0.18],
-        c.sage,
-        shoulder,
-      );
+      // The shoulder pivot sits just inside the chest so the cap reads as a
+      // rounded shoulder rather than a ball bolted onto the side.
+      const shoulder = g("Shoulder", side * 0.31, 0.44, 0, this.body);
+      joint("Shoulder cap", shoulder, 0.09, c.sage);
+      segment("Upper sleeve", shoulder, 0.24, 0.09, 0.082, c.sage);
       const elbow = g("Elbow", 0, -0.24, 0, shoulder);
-      s("Elbow", "sphere", [0, 0, 0], [0.16, 0.16, 0.17], c.sage, elbow);
-      s(
-        "Forearm sleeve",
-        "capsule",
-        [0, -0.1, 0],
-        [0.155, 0.26, 0.165],
-        c.sage,
-        elbow,
-      );
+      joint("Elbow", elbow, 0.082, c.sage);
+      // Ends inside the cuff, which closes the sleeve.
+      segment("Forearm sleeve", elbow, 0.2, 0.082, 0.076, c.sage);
       s(
         "Sleeve cuff",
         "round",
@@ -233,7 +238,16 @@ export class Avatar {
       this.neck,
     );
     this.head = g("Head", 0, 0.24, 0, this.neck);
-    s("Face", "sphere", [0, 0, 0], [0.7, 0.7, 0.62], skin, this.head);
+    // Head ellipsoid semi-axes; face details are placed on its surface.
+    const face = new pc.Vec3(0.35, 0.35, 0.31);
+    s(
+      "Face",
+      "sphere",
+      [0, 0, 0],
+      [face.x * 2, face.y * 2, face.z * 2],
+      skin,
+      this.head,
+    );
     s(
       "Hair cap",
       "sphere",
@@ -260,6 +274,29 @@ export class Avatar {
         this.head,
         [0, 0, -20 + i * 7],
       );
+    // Pivot on the face surface at (x, y), with +Z along the surface normal
+    // and sunk `sink` into the skin, so details hug the curve instead of
+    // hovering in a flat plane in front of it.
+    const forward = new pc.Vec3(0, 0, 1);
+    const onFace = (name: string, x: number, y: number, sink: number) => {
+      const z =
+        face.z *
+        Math.sqrt(Math.max(0, 1 - (x / face.x) ** 2 - (y / face.y) ** 2));
+      const normal = new pc.Vec3(
+        x / face.x ** 2,
+        y / face.y ** 2,
+        z / face.z ** 2,
+      ).normalize();
+      const e = g(
+        name,
+        x - normal.x * sink,
+        y - normal.y * sink,
+        z - normal.z * sink,
+        this.head,
+      );
+      e.setLocalRotation(new pc.Quat().setFromDirections(forward, normal));
+      return e;
+    };
     for (const side of [-1, 1]) {
       s(
         "Ear",
@@ -269,56 +306,51 @@ export class Avatar {
         skin,
         this.head,
       );
-      const eye = s(
-        "Eye",
-        "sphere",
-        [side * 0.135, -0.015, 0.293],
-        [0.068, 0.105, 0.034],
-        c.ink,
-        this.head,
-      );
-      this.eyes.push(eye);
+      // The eye pivot is what blinks, so the sparkle closes with the eye.
+      const eye = onFace("Eye", side * 0.135, -0.015, 0.006);
+      s("Pupil", "sphere", [0, 0, 0], [0.068, 0.105, 0.034], c.ink, eye);
       s(
         "Eye sparkle",
         "sphere",
-        [side * 0.135 - 0.01, 0.006, 0.313],
+        [-0.01, 0.021, 0.013],
         [0.018, 0.025, 0.009],
         c.white,
-        this.head,
+        eye,
       );
+      this.eyes.push(eye);
       s(
         "Brow",
         "capsule",
-        [side * 0.14, 0.085, 0.29],
-        [0.022, 0.08, 0.02],
+        [0, 0, 0],
+        [0.022, 0.05, 0.02],
         "#5e4433",
-        this.head,
+        onFace("Brow", side * 0.14, 0.09, 0.004),
         [0, 0, 90 + side * 10],
       );
       s(
         "Cheek",
         "sphere",
-        [side * 0.225, -0.09, 0.258],
+        [0, 0, 0],
         [0.095, 0.048, 0.021],
         c.pink,
-        this.head,
+        onFace("Cheek", side * 0.225, -0.09, 0.005),
       );
     }
     s(
       "Button nose",
       "sphere",
-      [0, -0.07, 0.314],
-      [0.065, 0.056, 0.056],
+      [0, 0, 0],
+      [0.065, 0.056, 0.05],
       "#dda987",
-      this.head,
+      onFace("Nose", 0, -0.07, 0.004),
     );
     s(
       "Smile",
       "sphere",
-      [0, -0.155, 0.287],
+      [0, 0, 0],
       [0.085, 0.03, 0.018],
       "#966552",
-      this.head,
+      onFace("Mouth", 0, -0.155, 0.004),
     );
   }
   /** Root transform; skipped when nothing moved. */
@@ -438,8 +470,6 @@ export class Avatar {
       arm.end.setLocalEulerAngles(p.wrist[i], 0, 0);
     }
     const blink = !reduced && time % 5.3 > 5.12;
-    this.eyes.forEach((e) =>
-      e.setLocalScale(0.068, blink ? 0.016 : 0.105, 0.034),
-    );
+    this.eyes.forEach((e) => e.setLocalScale(1, blink ? 0.15 : 1, 1));
   }
 }

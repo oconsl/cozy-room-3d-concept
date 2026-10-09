@@ -111,4 +111,13 @@ export const interactions: Interactive[] = [
     radius: 1.4,
     state: false,
   },
+  {
+    id: "cat",
+    name: "Michi",
+    type: "cat",
+    position: pos(layout.catBed),
+    approach: { x: 0.8, z: 3.9 },
+    radius: 1.3,
+    state: false,
+  },
 ];

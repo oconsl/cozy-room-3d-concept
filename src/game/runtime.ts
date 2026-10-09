@@ -8,6 +8,7 @@ import { AmbientSystem } from "./ambient";
 import { Avatar } from "./avatar";
 import { AvatarController } from "./avatarController";
 import { CozyAudio } from "./audio";
+import { Cat } from "./cat";
 import { CameraRig } from "./camera";
 import { InputController } from "./input";
 import { InteractionSystem } from "./interactions";
@@ -26,6 +27,7 @@ export class Runtime {
   private world: WorldRefs;
   private avatar: Avatar;
   private controller: AvatarController;
+  private cat: Cat;
   private camera: CameraRig;
   private input: InputController;
   private interactions: InteractionSystem;
@@ -62,6 +64,7 @@ export class Runtime {
     this.sun = this.createLights();
     this.world = buildWorld(b);
     this.avatar = new Avatar(b);
+    this.cat = new Cat(b);
     this.controller = new AvatarController(new NavGrid(floorAreas, obstacles), {
       x: 0,
       z: 0.3,
@@ -80,6 +83,7 @@ export class Runtime {
     this.interactions = new InteractionSystem(b, interactions, {
       avatar: this.controller,
       ambient: this.ambient,
+      cat: this.cat,
       builder: b,
       world: this.world,
       say: (message) => (this.message = message),
@@ -254,6 +258,7 @@ export class Runtime {
       dt,
       c.seated?.height ?? 0.84,
     );
+    this.cat.update(dt, this.preferences.reduced);
     this.updateRoom();
     this.interactions.update(c.position, this.time, this.preferences.reduced);
     this.interactions.ofType("plant")!.state = this.ambient.watered;

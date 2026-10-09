@@ -66,6 +66,9 @@ export const layout = {
   monstera: at(0.1, -4.7, 0.65),
   plantReading: at(-3.4, 4.85, 0.5),
   plantSocial: at(4.9, 4.5, 0.7),
+  // Pet corner along the open front edge of the studio.
+  petBowls: at(-1.3, 4.6, 1.05, 0.45),
+  catBed: at(0.8, 4.75, 0.85, 0.75),
   // Bedroom.
   bed: at(14.6, -4.55, 2.2, 2.55),
   nightstandWest: at(13.15, -5.45, 0.65, 0.55),

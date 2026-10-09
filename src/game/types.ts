@@ -20,7 +20,7 @@ export interface Obstacle {
   d: number;
 }
 export type InteractiveType =
-  "seat" | "lamp" | "monitor" | "book" | "board" | "plant" | "radio";
+  "seat" | "lamp" | "monitor" | "book" | "board" | "plant" | "radio" | "cat";
 export interface Interactive {
   id: string;
   name: string;
