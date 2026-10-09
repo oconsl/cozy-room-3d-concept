@@ -1,6 +1,6 @@
 import * as pc from "playcanvas";
 import { Builder, palette as c } from "../world/build";
-import type { AvatarState } from "./logic";
+import type { AvatarState } from "./types";
 const skin = "#efc6a4",
   skinShade = "#e9bb98",
   hair = "#72533f";
@@ -29,6 +29,20 @@ const rest = {
   wrist: [0, 0],
 };
 type Pose = typeof rest;
+type PoseKey = keyof Pose;
+const poseKeys = Object.keys(rest) as PoseKey[];
+const clonePose = (): Pose => structuredClone(rest);
+/** Overwrite `pose` with the rest values, reusing its arrays. */
+function resetPose(pose: Pose) {
+  for (const key of poseKeys) {
+    const from = rest[key];
+    if (Array.isArray(from)) {
+      const to = pose[key] as number[];
+      to[0] = from[0];
+      to[1] = from[1];
+    } else (pose[key] as number) = from;
+  }
+}
 export class Avatar {
   root: pc.Entity;
   hips: pc.Entity;
@@ -38,11 +52,14 @@ export class Avatar {
   arms: Limb[] = [];
   legs: Limb[] = [];
   eyes: pc.Entity[] = [];
-  pose: Pose = structuredClone(rest);
+  pose: Pose = clonePose();
+  // Scratch target pose, rewritten every frame instead of reallocated.
+  private target: Pose = clonePose();
+  private placed = { x: NaN, z: NaN, angle: NaN };
   constructor(b: Builder) {
     const g = b.group.bind(b),
       s = b.shape.bind(b);
-    this.root = g("Avatar · Nilo", 0, 0, 0.3);
+    this.root = b.dynamic(g("Avatar · Nilo", 0, 0, 0.3));
     this.hips = g("Hips", 0, rest.hipY, 0, this.root);
     s(
       "Trouser seat",
@@ -304,6 +321,16 @@ export class Avatar {
       this.head,
     );
   }
+  /** Root transform; skipped when nothing moved. */
+  place(x: number, z: number, angle: number) {
+    const p = this.placed;
+    if (p.x === x && p.z === z && p.angle === angle) return;
+    p.x = x;
+    p.z = z;
+    p.angle = angle;
+    this.root.setPosition(x, 0, z);
+    this.root.setEulerAngles(0, angle, 0);
+  }
   animate(
     state: AvatarState,
     time: number,
@@ -317,7 +344,8 @@ export class Avatar {
     const breathe = reduced ? 0 : Math.sin(time * 2);
     const sway = reduced ? 0 : Math.sin(time * 0.8);
     const phase = time * speed * 5;
-    const target: Pose = structuredClone(rest);
+    const target = this.target;
+    resetPose(target);
     // Idle: soft breathing, relaxed elbows, a slow weight shift.
     target.hipY = rest.hipY + breathe * 0.004;
     target.spinePitch = breathe * 1.2;
@@ -382,7 +410,7 @@ export class Avatar {
     }
     const k = 1 - Math.exp(-dt * 12);
     const p = this.pose;
-    for (const key of Object.keys(p) as (keyof Pose)[]) {
+    for (const key of poseKeys) {
       const cur = p[key],
         to = target[key];
       if (Array.isArray(cur) && Array.isArray(to)) {

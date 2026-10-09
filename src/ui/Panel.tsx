@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { readSaved, save } from "../game/logic";
-import type { Preferences } from "../game/runtime";
+import type { PanelType, Preferences } from "../game/store";
 export function Panel({
   type,
   onClose,
   preferences,
   onPreferences,
 }: {
-  type: string;
+  type: PanelType;
   onClose: () => void;
   preferences: Preferences;
   onPreferences: (p: Preferences) => void;
@@ -50,7 +50,7 @@ export function Panel({
         previousFocus.current.focus();
     };
   }, [onClose]);
-  const titles: Record<string, string> = {
+  const titles: Record<PanelType, string> = {
     board: "Ideas que florecen",
     book: "Una página, otro mundo",
     monitor: "La mesa está abierta",

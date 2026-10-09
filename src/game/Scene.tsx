@@ -1,30 +1,26 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useApp } from "@playcanvas/react/hooks";
-import {
-  Runtime,
-  type Bridge,
-  type Preferences,
-  type Snapshot,
-} from "./runtime";
+import { Runtime } from "./runtime";
+import type { GameStore, PanelType, Preferences } from "./store";
 export function Scene({
-  bridge,
+  store,
   preferences,
-  onSnapshot,
   onPanel,
 }: {
-  bridge: Bridge;
+  store: GameStore;
   preferences: Preferences;
-  onSnapshot: (s: Snapshot) => void;
-  onPanel: (type: string) => void;
+  onPanel: (panel: PanelType) => void;
 }) {
   const app = useApp();
+  // The runtime is created once with the current preferences; later changes
+  // reach it as commands below, without rebuilding the world.
+  const initial = useRef(preferences);
   useEffect(() => {
-    const runtime = new Runtime(app, preferences, onSnapshot, onPanel);
-    bridge.command = runtime.command;
-    return () => {
-      bridge.command = undefined;
-      runtime.destroy();
-    };
-  }, [app, bridge, onSnapshot, onPanel]);
+    const runtime = new Runtime(app, initial.current, store, onPanel);
+    return () => runtime.destroy();
+  }, [app, store, onPanel]);
+  useEffect(() => {
+    store.send({ type: "preferences", value: preferences });
+  }, [store, preferences]);
   return null;
 }

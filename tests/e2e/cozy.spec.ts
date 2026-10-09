@@ -124,3 +124,57 @@ test("click to move, settings and responsive HUD", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
 });
+
+test("bedroom seats and per-frame interaction indicator", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("scene")).toHaveAttribute("data-ready", "true");
+  const avatar = page.getByTestId("avatar");
+  const prompt = page.locator(".world-prompt");
+  await visit(page, "bed");
+  await expect(avatar).toHaveAttribute("data-state", "SITTING", {
+    timeout: 40000,
+  });
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toContainText("Levantarse");
+  await page.waitForTimeout(800);
+  // Coordinates should follow the zoom on animation frames, not only reports.
+  const samples = await prompt.evaluate(async (element) => {
+    const values: string[] = [];
+    window.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -240, bubbles: true }),
+    );
+    const canvas = document.querySelector("canvas")!;
+    canvas.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -240, bubbles: true }),
+    );
+    for (let i = 0; i < 20; i++) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      values.push(
+        (element as HTMLElement).style.left +
+          "," +
+          (element as HTMLElement).style.top,
+      );
+    }
+    return values;
+  });
+  expect(new Set(samples).size).toBeGreaterThan(3);
+  await page.getByRole("button", { name: "Ayuda", exact: true }).click();
+  await expect(prompt).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(prompt).toBeVisible();
+  await visit(page, "papasan");
+  await expect(avatar).toHaveAttribute("data-near", "papasan", {
+    timeout: 40000,
+  });
+  await expect(avatar).toHaveAttribute("data-state", "SITTING");
+  await prompt.click();
+  await expect(avatar).toHaveAttribute("data-state", "IDLE");
+  expect(errors).toEqual([]);
+});

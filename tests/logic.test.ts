@@ -1,17 +1,33 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   cameraDirection,
-  moveKinematic,
   distance,
   nearest,
-  pathfind,
   readSaved,
   save,
   transition,
-  walkable,
   type Interactive,
 } from "../src/game/logic";
-import { interactions, obstacles } from "../src/world/config";
+import {
+  moveKinematic as move,
+  pathfind as findPath,
+  walkable as isWalkable,
+} from "../src/game/navigation";
+import { floorAreas, interactions, obstacles } from "../src/world/config";
+const walkable = (
+  p: Parameters<typeof isWalkable>[0],
+  obstacles: Parameters<typeof isWalkable>[1],
+) => isWalkable(p, obstacles, floorAreas);
+const pathfind = (
+  start: Parameters<typeof findPath>[0],
+  end: Parameters<typeof findPath>[1],
+  obstacles: Parameters<typeof findPath>[2],
+) => findPath(start, end, obstacles, floorAreas);
+const moveKinematic = (
+  p: Parameters<typeof move>[0],
+  delta: Parameters<typeof move>[1],
+  obstacles: Parameters<typeof move>[2],
+) => move(p, delta, obstacles, floorAreas);
 afterEach(() => vi.unstubAllGlobals());
 describe("movement in camera coordinates", () => {
   it("maps forward to the isometric upper direction", () => {

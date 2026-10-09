@@ -1,13 +1,21 @@
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Application } from "@playcanvas/react";
 import { Scene } from "../game/Scene";
 import {
   defaults,
-  type Bridge,
+  GameStore,
+  type PanelType,
   type Preferences,
   type Snapshot,
-} from "../game/runtime";
-import { readSaved } from "../game/logic";
+} from "../game/store";
+import { readSaved, save } from "../game/logic";
 import { interactions } from "../world/config";
 import { Panel } from "../ui/Panel";
 function Icon({ name }: { name: string }) {
@@ -47,18 +55,27 @@ const initial: Snapshot = {
   room: { name: "ESTUDIO 01", mood: "LUZ DE TARDE" },
 };
 export function App() {
-  const bridge = useMemo<Bridge>(() => ({}), []);
-  const [snapshot, setSnapshot] = useState(initial);
+  const store = useMemo(() => new GameStore(initial), []);
+  const sceneRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const update = () => {
+      if (sceneRef.current)
+        sceneRef.current.dataset.ready = String(store.getSnapshot().ready);
+    };
+    update();
+    return store.subscribe(update);
+  }, [store]);
+  const bridge = useMemo(() => ({ command: store.send.bind(store) }), [store]);
   const [preferences, setPreferences] = useState<Preferences>(() =>
     readSaved("preferences", {
       ...defaults,
       reduced: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     }),
   );
-  const [panel, setPanel] = useState<string>();
+  const [panel, setPanel] = useState<PanelType>();
   const [explore, setExplore] = useState(false);
   const openPanel = useCallback(
-    (type: string) => {
+    (type: PanelType) => {
       setPanel(type);
       bridge.command?.({ type: "panel", open: true });
     },
@@ -70,22 +87,13 @@ export function App() {
   }, [bridge]);
   const changePreferences = (p: Preferences) => {
     setPreferences(p);
-    bridge.command?.({ type: "preferences", value: p });
+    save("preferences", p);
   };
   return (
     <main className={preferences.reduced ? "cozy reduced" : "cozy"}>
-      <div
-        className="world-canvas"
-        data-testid="scene"
-        data-ready={snapshot.ready}
-      >
+      <div className="world-canvas" data-testid="scene" ref={sceneRef}>
         <Application graphicsDeviceOptions={{ antialias: true, alpha: false }}>
-          <Scene
-            bridge={bridge}
-            preferences={preferences}
-            onSnapshot={setSnapshot}
-            onPanel={openPanel}
-          />
+          <Scene store={store} preferences={preferences} onPanel={openPanel} />
         </Application>
       </div>
       <header className="topbar">
@@ -101,15 +109,7 @@ export function App() {
           </div>
         </div>
         <nav aria-label="Ajustes del espacio">
-          <button
-            className="icon-button"
-            onClick={() => bridge.command?.({ type: "sound" })}
-            aria-label={snapshot.music ? "Apagar sonido" : "Activar sonido"}
-            aria-pressed={snapshot.music}
-            title="Radio de domingo"
-          >
-            <Icon name={snapshot.music ? "sound" : "mute"} />
-          </button>
+          <SoundButton store={store} />
           <button
             className="icon-button"
             aria-label="Alternar cámara"
@@ -149,25 +149,8 @@ export function App() {
         <h2>Un domingo sin apuro.</h2>
         <p>Un café, un libro y un mundo por habitar.</p>
       </div>
-      {!snapshot.ready && (
-        <div className="loading" role="status">
-          <Icon name="leaf" />
-          <span>Abriendo las ventanas…</span>
-        </div>
-      )}
-      {snapshot.ready && snapshot.indicator && !panel && (
-        <button
-          className="world-prompt"
-          style={{ left: snapshot.indicator.x, top: snapshot.indicator.y }}
-          onClick={() => bridge.command?.({ type: "interact" })}
-        >
-          <kbd>E</kbd>
-          <span>
-            {snapshot.state === "SITTING" ? "Levantarse" : snapshot.nearName}
-            <small>Presioná E para interactuar</small>
-          </span>
-        </button>
-      )}
+      <Loading store={store} />
+      <InteractionPrompt store={store} blocked={!!panel} />
       <aside className="explore-area">
         <button
           className="explore-toggle"
@@ -202,10 +185,7 @@ export function App() {
         )}
       </aside>
       <footer className="bottom-bar">
-        <div className="status-message">
-          <i />
-          <span role="status">{snapshot.message}</span>
-        </div>
+        <StatusMessage store={store} />
         <div className="control-strip">
           <span>
             <kbd>W A S D</kbd> Mover
@@ -227,26 +207,9 @@ export function App() {
           </button>
         </div>
       </footer>
-      <div className="room-label">
-        {snapshot.room.name} <span>·</span> {snapshot.room.mood}
-      </div>
-      {preferences.fps && (
-        <output className="fps">
-          {snapshot.fps} FPS · {preferences.quality}
-        </output>
-      )}
-      <output
-        className="diagnostic"
-        data-testid="avatar"
-        data-x={snapshot.position.x.toFixed(3)}
-        data-z={snapshot.position.z.toFixed(3)}
-        data-state={snapshot.state}
-        data-near={snapshot.near ?? ""}
-        data-lamp={snapshot.lamp}
-        data-music={snapshot.music}
-      >
-        Nilo · {snapshot.state}
-      </output>
+      <RoomLabel store={store} />
+      {preferences.fps && <Fps store={store} preferences={preferences} />}
+      <Diagnostic store={store} />
       {panel && (
         <Panel
           type={panel}
@@ -256,5 +219,124 @@ export function App() {
         />
       )}
     </main>
+  );
+}
+
+/** Scalar selectors keep unrelated HUD updates out of each component. */
+function useGame<T>(store: GameStore, selector: (snapshot: Snapshot) => T) {
+  return useSyncExternalStore(store.subscribe, () =>
+    selector(store.getSnapshot()),
+  );
+}
+function SoundButton({ store }: { store: GameStore }) {
+  const music = useGame(store, (s) => s.music);
+  return (
+    <button
+      className="icon-button"
+      onClick={() => store.send({ type: "sound" })}
+      aria-label={music ? "Apagar sonido" : "Activar sonido"}
+      aria-pressed={music}
+      title="Radio de domingo"
+    >
+      <Icon name={music ? "sound" : "mute"} />
+    </button>
+  );
+}
+function Loading({ store }: { store: GameStore }) {
+  const ready = useGame(store, (s) => s.ready);
+  return ready ? null : (
+    <div className="loading" role="status">
+      <Icon name="leaf" />
+      <span>Abriendo las ventanas…</span>
+    </div>
+  );
+}
+function InteractionPrompt({
+  store,
+  blocked,
+}: {
+  store: GameStore;
+  blocked: boolean;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const ready = useGame(store, (s) => s.ready);
+  const label = useGame(store, (s) =>
+    s.state === "SITTING" ? "Levantarse" : s.nearName,
+  );
+  useEffect(() => {
+    const move = (at?: { x: number; y: number }) => {
+      const button = ref.current;
+      if (!button) return;
+      button.style.visibility = at && ready && !blocked ? "visible" : "hidden";
+      if (at) {
+        button.style.left = `${at.x}px`;
+        button.style.top = `${at.y}px`;
+      }
+    };
+    move(store.indicator);
+    return store.onIndicator(move);
+  }, [store, ready, blocked]);
+  return (
+    <button
+      ref={ref}
+      className="world-prompt"
+      style={{ visibility: "hidden" }}
+      onClick={() => store.send({ type: "interact" })}
+    >
+      <kbd>E</kbd>
+      <span>
+        {label}
+        <small>Presioná E para interactuar</small>
+      </span>
+    </button>
+  );
+}
+function StatusMessage({ store }: { store: GameStore }) {
+  const message = useGame(store, (s) => s.message);
+  return (
+    <div className="status-message">
+      <i />
+      <span role="status">{message}</span>
+    </div>
+  );
+}
+function RoomLabel({ store }: { store: GameStore }) {
+  const name = useGame(store, (s) => s.room.name);
+  const mood = useGame(store, (s) => s.room.mood);
+  return (
+    <div className="room-label">
+      {name} <span>·</span> {mood}
+    </div>
+  );
+}
+function Fps({
+  store,
+  preferences,
+}: {
+  store: GameStore;
+  preferences: Preferences;
+}) {
+  const fps = useGame(store, (s) => s.fps);
+  return (
+    <output className="fps">
+      {fps} FPS · {preferences.quality}
+    </output>
+  );
+}
+function Diagnostic({ store }: { store: GameStore }) {
+  const snapshot = useGame(store, (s) => s);
+  return (
+    <output
+      className="diagnostic"
+      data-testid="avatar"
+      data-x={snapshot.position.x.toFixed(3)}
+      data-z={snapshot.position.z.toFixed(3)}
+      data-state={snapshot.state}
+      data-near={snapshot.near ?? ""}
+      data-lamp={snapshot.lamp}
+      data-music={snapshot.music}
+    >
+      Nilo · {snapshot.state}
+    </output>
   );
 }
